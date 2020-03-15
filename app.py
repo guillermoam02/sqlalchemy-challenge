@@ -1,7 +1,7 @@
 import datetime as dt
-import numpy as np
 import pandas as pd
 import datetime as dt
+import numpy as np
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
@@ -13,10 +13,8 @@ engine = create_engine("sqlite:///Resources/Hawaii.sqlite")
 Base = automap_base()
 Base.prepare(engine, reflect=True)
 
+Measurement = Base.classes.measurement
 Station = Base.classes.station
-Measurements = Base.classes.measurements
-
-session = Session(engine)
 
 app = Flask(__name__)
 
@@ -29,13 +27,15 @@ def welcome():
         f"/api/v1.0/precipitation - List of prior year rain totals from all stations<br/>"
         f"/api/v1.0/stations - List of Station numbers and names<br/>"
         f"/api/v1.0/tobs - List of prior year temperatures from all stations<br/>"
-        f"/api/v1.0/start - When given the start date (YYYY-MM-DD), calculates the MIN/AVG/MAX temperature for all dates greater than and equal to the start date<br/>"
-        f"/api/v1.0/start/end - When given the start and the end date (YYYY-MM-DD), calculate the MIN/AVG/MAX temperature for dates between the start and end date inclusive<br/>"
+        f"/api/v1.0/start - When given the start date<br/>"
+        f"/api/v1.0/start/end - When given the start and the end date<br/>"
     )
 #########################################
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
+    session = Session(engine)
+
     """Return a list of rain fall for prior year"""
     lminfo = session.query(Measurement.date)\
         .order_by(Measurement.date.desc()).first()
@@ -44,36 +44,46 @@ def precipitation():
         .filter(Measurement.date>yearago)\
         .order_by(Measurement.date).all()
 
+    session.close()
+
     RainTots = []
     for result in prec:
         row = {}
         row["date"] = prec[0]
         row["prcp"] = prec[1]
         RainTots.append(row)
-
+    
     return jsonify(RainTots)
 
 #########################################
 @app.route("/api/v1.0/stations")
 def stations():
+    session = Session(engine)
+
     activestations=session.query(Measurement.station,\
         func.count(Measurement.station))\
         .group_by(Measurement.station)\
-            .order_by(func.count(Measurement.station).desc()).all()
-    return jsonify(stations.to_dict())
+        .order_by(func.count(Measurement.station).desc()).all()
+    
+    session.close()
+    
+    return jsonify(activestations)
 
 #########################################
 @app.route("/api/v1.0/tobs")
 def tobs():
+    session = Session(engine)
+
     """Return a list of temperatures for prior year"""
     lminfo = session.query(Measurement.date)\
         .order_by(Measurement.date.desc()).first()
     yearago=dt.date(2017, 8, 23)- dt.timedelta(days=365)
     HObs = session.query(Measurement.date, Measurement.tobs)\
         .filter (Measurement.date>yearago)\
-        .filter (Measurement.station == ID)\
         .order_by (Measurement.date)\
         .all()
+
+    session.close()
 
     TempTots = []
     for result in HObs:
@@ -81,12 +91,13 @@ def tobs():
         row["date"] = HObs[0]
         row["tobs"] = HObs[1]
         TempTots.append(row)
-
+    
     return jsonify(TempTots)
 
 #########################################
 @app.route("/api/v1.0/<start>")
 def OnlyStart(start):
+    session = Session(engine)
 
     start_date= dt.datetime.strptime(start, '%Y-%m-%d')
     last_year = dt.timedelta(days=365)
@@ -95,11 +106,15 @@ def OnlyStart(start):
     data = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
         filter(Measurement.date >= start_date).filter(Measurement.date <= end_date).all()
     DataList = list(np.ravel(data))
+    
+    session.close()
+    
     return jsonify(DataList)
 
 #########################################
 @app.route("/api/v1.0/<start>/<end>")
 def StartAndEnd(start,end):
+    session = Session(engine)
 
     start_date= dt.datetime.strptime(start, '%Y-%m-%d')
     end_date= dt.datetime.strptime(end,'%Y-%m-%d')
@@ -109,6 +124,9 @@ def StartAndEnd(start,end):
     data = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
         filter(Measurement.date >= start_date).filter(Measurement.date <= end_date).all()
     DataList = list(np.ravel(data))
+    
+    session.close()
+    
     return jsonify(DataList)
 
 #########################################
